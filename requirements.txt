@@ -1,0 +1,6 @@
+beautifulsoup4
+chromadb
+html2text
+pdfplumber
+python-dotenv
+requests
