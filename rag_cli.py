@@ -2,12 +2,11 @@
 import argparse
 import sys
 
-from indexer import fetch_url, get_collection, index_all_docs, index_document
+from indexer import DOCS_PATH, fetch_url, get_collection, index_all_docs, index_document
 from query import ask
 
 
 def cmd_index(args):
-    from indexer import DOCS_PATH
     print(f"Indexing {DOCS_PATH} ...")
     index_all_docs()
 
@@ -18,7 +17,11 @@ def cmd_query(args):
 
 def cmd_add_url(args):
     print(f"Fetching {args.url} ...")
-    text = fetch_url(args.url)
+    try:
+        text = fetch_url(args.url)
+    except Exception as e:
+        print(f"Error fetching URL: {e}", file=sys.stderr)
+        sys.exit(1)
     print(f"Fetched ({len(text)} chars)")
     collection = get_collection()
     n = index_document(text, args.url, "web", collection)

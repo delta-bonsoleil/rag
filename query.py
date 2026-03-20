@@ -20,9 +20,10 @@ def ask(question, n_results=5):
     contexts = retrieve(question, n_results)
     if not contexts:
         print("インデックスにドキュメントがありません。先に `index` を実行してください。")
-        return
+        return contexts
     for ctx in contexts:
         print("---")
         print(ctx["text"])
         print(f"(source: {ctx['source']}, distance: {ctx['distance']:.4f})")
     print("---")
+    return contexts
