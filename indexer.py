@@ -91,19 +91,6 @@ def chunk_text(text, chunk_size=CHUNK_SIZE, overlap=CHUNK_OVERLAP):
     return chunks
 
 
-def extract_frontmatter(path):
-    """Markdownファイルからフロントマターを抽出"""
-    text = Path(path).read_text(encoding="utf-8")
-    meta = {}
-    match = re.match(r"^---\n(.*?)\n---\n", text, flags=re.DOTALL)
-    if match:
-        for line in match.group(1).splitlines():
-            if ":" in line:
-                key, _, value = line.partition(":")
-                meta[key.strip()] = value.strip().strip('"').strip("'")
-    return meta
-
-
 def detect_theme(path):
     """ファイルパスからテーマを検出（note_articles/<theme>/... の構造を利用）"""
     parts = Path(path).parts
@@ -113,13 +100,21 @@ def detect_theme(path):
             return parts[idx + 1]
     except ValueError:
         pass
-    return ""
+    return None
 
 
 def load_markdown(path):
+    """Markdownファイルを読み込み、本文とフロントマターメタデータを返す"""
     text = Path(path).read_text(encoding="utf-8")
-    text = re.sub(r"^---.*?---\n", "", text, count=1, flags=re.DOTALL)
-    return text
+    meta = {}
+    match = re.match(r"^---\n(.*?)\n---\n", text, flags=re.DOTALL)
+    if match:
+        for line in match.group(1).splitlines():
+            if ":" in line:
+                key, _, value = line.partition(":")
+                meta[key.strip()] = value.strip().strip('"').strip("'")
+        text = text[match.end():]
+    return text, meta
 
 
 def load_pdf(path):
@@ -169,7 +164,7 @@ def index_document(text, source, doc_type, collection=None, extra_meta=None):
 
     ids = [make_id(source, i) for i in range(len(chunks))]
     metadatas = [
-        {"source": source, "doc_type": doc_type, "chunk_index": i, **meta}
+        {**meta, "source": source, "doc_type": doc_type, "chunk_index": i}
         for i in range(len(chunks))
     ]
     collection.upsert(ids=ids, documents=chunks, metadatas=metadatas)
@@ -206,9 +201,8 @@ def index_all_docs():
             continue
         try:
             if path.suffix == ".md":
-                text = load_markdown(path)
-                # フロントマターとディレクトリ構造からメタデータ抽出
-                fm = extract_frontmatter(path)
+                text, fm = load_markdown(path)
+                # ディレクトリ構造とフロントマターからメタデータ抽出
                 theme = detect_theme(path)
                 extra_meta = {}
                 if theme:
