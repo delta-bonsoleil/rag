@@ -91,6 +91,31 @@ def chunk_text(text, chunk_size=CHUNK_SIZE, overlap=CHUNK_OVERLAP):
     return chunks
 
 
+def extract_frontmatter(path):
+    """Markdownファイルからフロントマターを抽出"""
+    text = Path(path).read_text(encoding="utf-8")
+    meta = {}
+    match = re.match(r"^---\n(.*?)\n---\n", text, flags=re.DOTALL)
+    if match:
+        for line in match.group(1).splitlines():
+            if ":" in line:
+                key, _, value = line.partition(":")
+                meta[key.strip()] = value.strip().strip('"').strip("'")
+    return meta
+
+
+def detect_theme(path):
+    """ファイルパスからテーマを検出（note_articles/<theme>/... の構造を利用）"""
+    parts = Path(path).parts
+    try:
+        idx = parts.index("note_articles")
+        if idx + 1 < len(parts):
+            return parts[idx + 1]
+    except ValueError:
+        pass
+    return ""
+
+
 def load_markdown(path):
     text = Path(path).read_text(encoding="utf-8")
     text = re.sub(r"^---.*?---\n", "", text, count=1, flags=re.DOTALL)
@@ -124,15 +149,27 @@ def make_id(source, chunk_index):
     return f"{h}::chunk_{chunk_index}"
 
 
-def index_document(text, source, doc_type, collection=None):
+def index_document(text, source, doc_type, collection=None, extra_meta=None):
     if collection is None:
         collection = get_collection()
     chunks = chunk_text(text)
     if not chunks:
         return 0
+
+    # チャンクにコンテキストプレフィックスを付与（検索精度向上）
+    meta = extra_meta or {}
+    prefix_parts = []
+    if meta.get("title"):
+        prefix_parts.append(meta["title"])
+    if meta.get("theme"):
+        prefix_parts.append(f"[{meta['theme']}]")
+    prefix = " ".join(prefix_parts)
+    if prefix:
+        chunks = [f"{prefix}\n{chunk}" for chunk in chunks]
+
     ids = [make_id(source, i) for i in range(len(chunks))]
     metadatas = [
-        {"source": source, "doc_type": doc_type, "chunk_index": i}
+        {"source": source, "doc_type": doc_type, "chunk_index": i, **meta}
         for i in range(len(chunks))
     ]
     collection.upsert(ids=ids, documents=chunks, metadatas=metadatas)
@@ -170,7 +207,17 @@ def index_all_docs():
         try:
             if path.suffix == ".md":
                 text = load_markdown(path)
-                n = index_document(text, str(path), "markdown", collection)
+                # フロントマターとディレクトリ構造からメタデータ抽出
+                fm = extract_frontmatter(path)
+                theme = detect_theme(path)
+                extra_meta = {}
+                if theme:
+                    extra_meta["theme"] = theme
+                if fm.get("title"):
+                    extra_meta["title"] = fm["title"]
+                if fm.get("published"):
+                    extra_meta["published"] = fm["published"]
+                n = index_document(text, str(path), "markdown", collection, extra_meta)
             else:
                 text = load_pdf(path)
                 n = index_document(text, str(path), "pdf", collection)
