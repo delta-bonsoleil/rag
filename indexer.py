@@ -202,15 +202,36 @@ def index_all_docs(docs_path=None, collection_name=None):
     errors = []
     indexed_sources = set()
 
+    # コレクション内の既存ソースとmtimeを取得
+    existing_meta = {}
+    try:
+        result = collection.get(include=["metadatas"])
+        for meta in result["metadatas"]:
+            src = meta.get("source")
+            mtime = meta.get("mtime")
+            if src and mtime and src not in existing_meta:
+                existing_meta[src] = float(mtime)
+    except Exception:
+        pass
+
+    skipped_docs = 0
+
     for path in sorted(docs_path.rglob("*")):
         if path.suffix not in (".md", ".pdf"):
+            continue
+        src_key = str(path)
+        current_mtime = path.stat().st_mtime
+        # 前回と同じmtimeならスキップ
+        if existing_meta.get(src_key) == current_mtime:
+            indexed_sources.add(src_key)
+            skipped_docs += 1
             continue
         try:
             if path.suffix == ".md":
                 text, fm = load_markdown(path)
                 # ディレクトリ構造とフロントマターからメタデータ抽出
                 theme = detect_theme(path)
-                extra_meta = {}
+                extra_meta = {"mtime": str(current_mtime)}
                 if theme:
                     extra_meta["theme"] = theme
                 if fm.get("title"):
@@ -220,10 +241,10 @@ def index_all_docs(docs_path=None, collection_name=None):
                 n = index_document(text, str(path), "markdown", collection, extra_meta)
             else:
                 text = load_pdf(path)
-                n = index_document(text, str(path), "pdf", collection)
+                n = index_document(text, str(path), "pdf", collection, {"mtime": str(current_mtime)})
             total_docs += 1
             total_chunks += n
-            indexed_sources.add(str(path))
+            indexed_sources.add(src_key)
             print(f"  {path.name}: {n} chunks")
         except Exception as e:
             errors.append((path, e))
@@ -237,7 +258,7 @@ def index_all_docs(docs_path=None, collection_name=None):
         n = _delete_source(collection, source)
         print(f"  Removed stale: {source} ({n} chunks)")
 
-    print(f"Indexed {total_docs} document(s) ({total_chunks} chunks total)")
+    print(f"Indexed {total_docs} document(s) ({total_chunks} chunks total), skipped {skipped_docs} unchanged")
     if errors:
         print(f"  {len(errors)} error(s) occurred:")
         for path, e in errors:
