@@ -1,8 +1,11 @@
-from indexer import get_collection
+from indexer import _get_client, get_collection
 
 
-def retrieve(question, n_results=5):
-    collection = get_collection()
+def retrieve(question, n_results=5, collection_name=None):
+    if collection_name:
+        collection = _get_client().get_or_create_collection(name=collection_name)
+    else:
+        collection = get_collection()
     results = collection.query(query_texts=[question], n_results=n_results)
     contexts = []
     for i in range(len(results["ids"][0])):
@@ -20,8 +23,8 @@ def retrieve(question, n_results=5):
     return contexts
 
 
-def ask(question, n_results=5):
-    contexts = retrieve(question, n_results)
+def ask(question, n_results=5, collection_name=None):
+    contexts = retrieve(question, n_results, collection_name=collection_name)
     if not contexts:
         print("インデックスにドキュメントがありません。先に `index` を実行してください。")
         return contexts

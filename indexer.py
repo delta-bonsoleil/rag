@@ -188,9 +188,15 @@ def _delete_source(collection, source):
     return len(result["ids"])
 
 
-def index_all_docs():
-    collection = get_collection()
-    docs_path = Path(DOCS_PATH)
+def index_all_docs(docs_path=None, collection_name=None):
+    if docs_path is None:
+        docs_path = Path(DOCS_PATH)
+    else:
+        docs_path = Path(docs_path)
+    if collection_name is None:
+        collection_name = COLLECTION_NAME
+
+    collection = _get_client().get_or_create_collection(name=collection_name)
     total_docs = 0
     total_chunks = 0
     errors = []
@@ -238,3 +244,27 @@ def index_all_docs():
             print(f"    {path}: {e}")
 
     return total_docs, total_chunks
+
+
+def index_agent_memory(agent_memory_root=None):
+    """~/.claude/agent-memory/ 配下を {name}-diary / {name}-memory コレクションにインデックス"""
+    if agent_memory_root is None:
+        agent_memory_root = Path.home() / ".claude" / "agent-memory"
+    else:
+        agent_memory_root = Path(agent_memory_root)
+
+    if not agent_memory_root.exists():
+        print(f"agent-memory directory not found: {agent_memory_root}")
+        return
+
+    for agent_dir in sorted(agent_memory_root.iterdir()):
+        if not agent_dir.is_dir():
+            continue
+        name = agent_dir.name
+        for subtype in ("diary", "memory"):
+            subdir = agent_dir / subtype
+            if not subdir.exists():
+                continue
+            collection_name = f"{name}-{subtype}"
+            print(f"\n[{collection_name}] indexing {subdir} ...")
+            index_all_docs(docs_path=subdir, collection_name=collection_name)
